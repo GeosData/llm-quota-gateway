@@ -132,6 +132,20 @@ make down
 
 ---
 
+## Commands
+
+| Command | Description |
+|---|---|
+| `make setup` | Copy `.env.example` → `.env` (then edit `OPENAI_API_KEY`) |
+| `make up` | Build and start all services (detached) |
+| `make down` | Stop all services and remove volumes |
+| `make logs` | Stream app logs |
+| `make dev` | Run app locally without Docker |
+| `make shell` | Open shell inside running app container |
+| `make ps` | Show status of all services |
+
+---
+
 ## ADR Index
 
 - [ADR-0001](docs/adr/ADR-0001-pgvector-over-dedicated-vectordb.md) — Use pgvector over dedicated vector database (Qdrant, Weaviate, Pinecone)
