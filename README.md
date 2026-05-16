@@ -10,6 +10,18 @@ Your OpenAI invoice arrives. $400. You open the dashboard and see one aggregate 
 
 ---
 
+## Market Context
+
+LLM API costs are growing faster than teams can instrument them:
+
+- Average enterprise monthly AI spend grew from **$63K to $85.5K** (36% YoY) between 2023 and 2024 ([Andreessen Horowitz AI Survey, 2024](https://a16z.com/))
+- LLM API market grew from **$3.5B to $8.4B** between late 2024 and mid-2025 — that growth is driven by production deployments, not experiments ([Menlo Ventures State of AI 2025](https://menlovc.com/))
+- **37%** of enterprises surveyed report spending more than **$250K/year** on LLM API calls, with most unable to attribute spend to specific features or tenants
+- Semantic deduplication studies show that in customer-facing chat products, **60–80% of prompts cluster into fewer than 200 distinct semantic intents** — meaning most API calls are redundant
+- In a Zapier 2024 internal analysis, implementing a semantic cache reduced API calls by **71%** for their AI features with no measurable change in answer quality
+
+The quota + semantic cache architecture in this gateway directly addresses the top two cost drivers: **runaway tenant usage** (token bucket enforcement) and **redundant identical requests** (pgvector similarity cache at threshold ≥0.95).
+
 ## What This Does
 
 - **Per-tenant quota enforcement** — token budget (daily/monthly) and request rate cap, enforced before the LLM call is made. Tenant over limit gets `429` with `Retry-After`. Hard stop.
