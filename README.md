@@ -74,24 +74,60 @@ Client
 
 ## Quick Start
 
+**Prerequisites:** Docker + Docker Compose + OpenAI API key
+
 ```bash
-cp .env.example .env
-# Set OPENAI_API_KEY and ANTHROPIC_API_KEY in .env
+git clone https://github.com/jotive/llm-quota-gateway
+cd llm-quota-gateway
+make setup        # copies .env.example → .env
+# Edit .env → set OPENAI_API_KEY
+make up           # starts app + PostgreSQL + Redis
+```
 
-docker compose up -d
-docker compose exec gateway alembic upgrade head
+Check quota status for a tenant:
 
-# Send a request — same format as OpenAI
-curl http://localhost:8000/v1/chat/completions \
+```bash
+curl http://localhost:8000/quota/tenant-acme
+# {"tenant_id":"tenant-acme","used_tokens":0,"limit":100000,"remaining":100000,...}
+```
+
+Make a chat completion request (proxied to OpenAI):
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "X-Tenant-ID: tenant-abc" \
+  -H "X-Tenant-ID: tenant-acme" \
   -d '{
     "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "What is the penalty clause?"}]
+    "messages": [{"role": "user", "content": "What is Redis?"}]
   }'
+# Returns OpenAI response + X-Cache: MISS header
+```
 
-# Check tenant quota usage
-curl http://localhost:8000/api/v1/admin/tenants/tenant-abc/quota
+Send the same (semantically equivalent) question again:
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: tenant-acme" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Can you explain what Redis is?"}]
+  }'
+# Returns cached response + X-Cache: HIT (no API call made)
+```
+
+Check updated quota:
+
+```bash
+curl http://localhost:8000/quota/tenant-acme
+# used_tokens now reflects the first request only (cache hit skipped billing)
+```
+
+Stop:
+
+```bash
+make down
 ```
 
 ---

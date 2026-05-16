@@ -3,6 +3,10 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import asyncpg
 import structlog
 from fastapi import FastAPI
