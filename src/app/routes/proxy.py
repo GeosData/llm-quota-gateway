@@ -69,22 +69,22 @@ async def chat_completions(
         )
 
     # 2. Quota check — estimate token cost before calling the provider
-    # Rough estimate: 1 token ≈ 4 chars, plus 200 completion buffer
-    estimated_tokens = max(len(prompt) // 4, 1) + (body.max_tokens or 200)
-
-    allowed, remaining, retry_after = await check_and_consume(
-        redis_client=redis_client,
-        tenant_id=x_tenant_id,
-        tokens_requested=estimated_tokens,
-        limit=_DEFAULT_QUOTA_LIMIT,
-        window_seconds=_QUOTA_WINDOW_SECONDS,
-    )
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={"error": "quota_exceeded", "tenant_id": x_tenant_id, "remaining": remaining},
-            headers={"Retry-After": str(retry_after)},
+    # (skipped when Redis is not configured)
+    if redis_client is not None:
+        estimated_tokens = max(len(prompt) // 4, 1) + (body.max_tokens or 200)
+        allowed, remaining, retry_after = await check_and_consume(
+            redis_client=redis_client,
+            tenant_id=x_tenant_id,
+            tokens_requested=estimated_tokens,
+            limit=_DEFAULT_QUOTA_LIMIT,
+            window_seconds=_QUOTA_WINDOW_SECONDS,
         )
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail={"error": "quota_exceeded", "tenant_id": x_tenant_id, "remaining": remaining},
+                headers={"Retry-After": str(retry_after)},
+            )
 
     # 3. Forward to the upstream provider (any OpenAI-compatible endpoint)
     upstream_key = os.environ.get("LLM_API_KEY") or os.environ["OPENAI_API_KEY"]

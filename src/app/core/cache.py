@@ -1,16 +1,38 @@
 from __future__ import annotations
 
-import json
+import asyncio
+import hashlib
 import os
 
 import asyncpg
 import structlog
-from openai import AsyncOpenAI
+from fastembed import TextEmbedding
 
 logger = structlog.get_logger(__name__)
 
-_EMBEDDING_MODEL = "text-embedding-3-small"
-_EMBEDDING_DIM = 1536
+_EMBEDDING_MODEL = os.environ.get(
+    "CACHE_EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
+_EMBEDDING_DIM = 384
+
+_model: TextEmbedding | None = None
+
+
+def _get_model() -> TextEmbedding:
+    global _model
+    if _model is None:
+        cache_dir = os.environ.get("FASTEMBED_CACHE")
+        _model = (
+            TextEmbedding(_EMBEDDING_MODEL, cache_dir=cache_dir)
+            if cache_dir
+            else TextEmbedding(_EMBEDDING_MODEL)
+        )
+    return _model
+
+
+def _embed_sync(text: str) -> list[float]:
+    return next(iter(_get_model().embed([text]))).tolist()
+
 
 _DDL = f"""
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -34,7 +56,6 @@ class SemanticCache:
     def __init__(self, pool: asyncpg.Pool, threshold: float = 0.95) -> None:
         self._pool = pool
         self._threshold = threshold
-        self._openai = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
     async def init_schema(self) -> None:
         async with self._pool.acquire() as conn:
@@ -42,11 +63,7 @@ class SemanticCache:
         logger.info("semantic_cache_schema_ready")
 
     async def _embed(self, text: str) -> list[float]:
-        response = await self._openai.embeddings.create(
-            model=_EMBEDDING_MODEL,
-            input=text,
-        )
-        return response.data[0].embedding
+        return await asyncio.to_thread(_embed_sync, text)
 
     async def get(self, prompt: str) -> str | None:
         embedding = await self._embed(prompt)
@@ -72,8 +89,6 @@ class SemanticCache:
     async def set(self, prompt: str, response: str) -> None:
         embedding = await self._embed(prompt)
         vector_literal = "[" + ",".join(str(v) for v in embedding) + "]"
-
-        import hashlib
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
         insert_sql = """

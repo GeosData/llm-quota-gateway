@@ -36,10 +36,14 @@ async def lifespan(app: FastAPI):
     # --- startup ---
     logger.info("gateway_starting")
 
-    # Redis
-    redis_url = os.environ["REDIS_URL"]
-    redis_client = Redis.from_url(redis_url, decode_responses=True)
-    await load_lua_script(redis_client)
+    # Redis (optional — per-tenant quota is disabled if not configured)
+    redis_url = os.environ.get("REDIS_URL")
+    if redis_url:
+        redis_client = Redis.from_url(redis_url, decode_responses=True)
+        await load_lua_script(redis_client)
+    else:
+        redis_client = None
+        logger.warning("redis_not_configured", note="quota enforcement disabled")
     app.state.redis = redis_client
 
     # Postgres (asyncpg pool for pgvector cache)
@@ -59,7 +63,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- shutdown ---
-    await redis_client.aclose()
+    if redis_client is not None:
+        await redis_client.aclose()
     await pool.close()
     await engine.dispose()
     logger.info("gateway_stopped")
@@ -68,7 +73,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM Quota Gateway",
     version="0.1.0",
-    description="Per-tenant quota enforcement, semantic cache, and cost audit for OpenAI.",
+    description="Per-tenant quota enforcement, semantic cache, and cost audit for OpenAI-compatible providers.",
     lifespan=lifespan,
 )
 
