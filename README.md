@@ -27,8 +27,9 @@ The quota + semantic cache architecture in this gateway directly addresses the t
 - **Per-tenant quota enforcement** — token budget (daily/monthly) and request rate cap, enforced before the LLM call is made. Tenant over limit gets `429` with `Retry-After`. Hard stop.
 - **Semantic cache via pgvector** — every prompt is embedded and compared against cached embeddings. Cosine similarity > 0.95 = cache hit, cached response returned immediately, no API call, no cost.
 - **Full audit log** — every request writes tenant ID, prompt hash, token count, cost estimate, cache hit/miss flag, provider, and latency. Queryable after the fact.
-- **Drop-in replacement for OpenAI client** — gateway exposes the same `/v1/chat/completions` surface. Change one base URL in your application, nothing else.
-- **Provider failover** — if OpenAI returns `429` or `5xx`, the request is automatically rerouted to Anthropic with the same payload.
+- **Drop-in for any OpenAI-compatible client** — the gateway exposes the same `/v1/chat/completions` surface and forwards to whatever provider you set via `LLM_CHAT_URL` (OpenAI, Groq, Together, …). Change one base URL in your application, nothing else.
+
+> **Roadmap (not implemented yet):** automatic provider failover on `429`/`5xx`, native support for non-OpenAI-compatible providers (Gemini), and a local-embeddings option for the cache. Deliberately kept out of the feature list above — this README describes what the code does today, not what it might do.
 
 ---
 
@@ -49,10 +50,9 @@ Client
 │     (similarity > 0.95)  (Postgres)      │
 │     cache hit → return                   │
 │                                          │
-│  3. LLM call ─────────► OpenAI API       │
-│     (cache miss)          ▼              │
-│                        Anthropic API     │
-│                        (failover)        │
+│  3. LLM call ─────────► Provider API     │
+│     (cache miss)       (OpenAI-compatible:│
+│                        OpenAI, Groq, …)   │
 │                                          │
 │  4. Store embedding ──► pgvector         │
 │  5. Deduct tokens ────► Redis            │
@@ -67,7 +67,8 @@ Client
 - **Python 3.12 + FastAPI** — async request handling
 - **PostgreSQL 16 + pgvector** — semantic cache (embedding storage + cosine similarity search)
 - **Redis 7** — quota counters and rate limiting (token bucket via Lua scripts)
-- **OpenAI SDK + Anthropic SDK** — provider clients
+- **httpx** — proxies to any OpenAI-compatible chat endpoint (OpenAI, Groq, Together, …) configured via `LLM_CHAT_URL`
+- **OpenAI SDK** — embeddings for the semantic cache (`text-embedding-3-small`)
 - **SQLAlchemy 2.0 + Alembic** — ORM and schema migrations
 
 ---

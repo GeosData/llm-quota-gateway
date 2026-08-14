@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
-_OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+_UPSTREAM_CHAT_URL = os.environ.get("LLM_CHAT_URL", "https://api.openai.com/v1/chat/completions")
 _DEFAULT_QUOTA_LIMIT = int(os.environ.get("DEFAULT_QUOTA_LIMIT", 100_000))
 _QUOTA_WINDOW_SECONDS = int(os.environ.get("QUOTA_WINDOW_SECONDS", 3600))
 
@@ -68,7 +68,7 @@ async def chat_completions(
             headers={"X-Cache": "HIT"},
         )
 
-    # 2. Quota check — estimate token cost before calling OpenAI
+    # 2. Quota check — estimate token cost before calling the provider
     # Rough estimate: 1 token ≈ 4 chars, plus 200 completion buffer
     estimated_tokens = max(len(prompt) // 4, 1) + (body.max_tokens or 200)
 
@@ -86,16 +86,16 @@ async def chat_completions(
             headers={"Retry-After": str(retry_after)},
         )
 
-    # 3. Forward to OpenAI
-    openai_api_key = os.environ["OPENAI_API_KEY"]
+    # 3. Forward to the upstream provider (any OpenAI-compatible endpoint)
+    upstream_key = os.environ.get("LLM_API_KEY") or os.environ["OPENAI_API_KEY"]
     payload = body.model_dump(exclude_none=True)
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         upstream = await client.post(
-            _OPENAI_CHAT_URL,
+            _UPSTREAM_CHAT_URL,
             json=payload,
             headers={
-                "Authorization": f"Bearer {openai_api_key}",
+                "Authorization": f"Bearer {upstream_key}",
                 "Content-Type": "application/json",
             },
         )
