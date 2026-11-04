@@ -47,8 +47,6 @@ CREATE TABLE IF NOT EXISTS semantic_cache (
 
 ALTER TABLE semantic_cache ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
 
-CREATE INDEX IF NOT EXISTS semantic_cache_tenant_idx ON semantic_cache (tenant_id);
-
 CREATE INDEX IF NOT EXISTS semantic_cache_embedding_idx
     ON semantic_cache
     USING ivfflat (embedding vector_cosine_ops)

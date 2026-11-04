@@ -133,6 +133,32 @@ make down
 
 ---
 
+## Authentication
+
+Every request to `/v1/chat/completions` and `/quota/{tenant_id}` needs `Authorization: Bearer <api_key>`. The tenant is derived from the key, never from the request.
+
+Configure keys with `GATEWAY_API_KEYS`, a comma-separated list of `<api_key>:<tenant_id>` pairs:
+
+```bash
+GATEWAY_API_KEYS="key-acme:tenant-acme,key-globex:tenant-globex"
+```
+
+- The value is validated once at startup. The gateway aborts with an error if it is missing, empty, malformed or repeats an API key, so a broken configuration never serves `/health`.
+- An API key cannot contain a colon (the first colon separates key from tenant) and each key may appear only once.
+- If the configuration becomes invalid at runtime, requests fail closed with `503`.
+
+### Legacy tenant header (temporary)
+
+`GATEWAY_LEGACY_TENANT_HEADER=1` (off by default, exact value `1` only) lets a request with no Bearer token authenticate through `X-Tenant-ID` when that tenant exists in `GATEWAY_API_KEYS`. Each use logs a `legacy_tenant_header_accepted` warning naming the tenant. While this flag is active, any client can impersonate any tenant. It exists only to migrate clients and must be removed soon.
+
+### Upgrading the semantic cache
+
+The cache is now scoped per tenant through a `tenant_id` column. Rows written before the upgrade have an empty `tenant_id`, never match any tenant, and are dead data. After deploying, delete them; the cache starts cold:
+
+```sql
+DELETE FROM semantic_cache WHERE tenant_id = '';
+```
+
 ## Commands
 
 | Command | Description |

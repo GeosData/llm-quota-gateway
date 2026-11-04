@@ -12,6 +12,7 @@ import structlog
 from fastapi import FastAPI
 from redis.asyncio import Redis
 
+from src.app.core.auth import require_api_keys
 from src.app.core.cache import SemanticCache
 from src.app.core.quota import load_lua_script
 from src.app.db.models import Base
@@ -35,6 +36,8 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI):
     # --- startup ---
     logger.info("gateway_starting")
+
+    require_api_keys()
 
     # Redis (optional — per-tenant quota is disabled if not configured)
     redis_url = os.environ.get("REDIS_URL")
