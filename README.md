@@ -81,14 +81,14 @@ Client
 git clone https://github.com/jotive/llm-quota-gateway
 cd llm-quota-gateway
 make setup        # copies .env.example → .env
-# Edit .env → set OPENAI_API_KEY
+# Edit .env → set OPENAI_API_KEY and export GATEWAY_API_KEYS="<api_key>:<tenant_id>,..."
 make up           # starts app + PostgreSQL + Redis
 ```
 
 Check quota status for a tenant:
 
 ```bash
-curl http://localhost:8000/quota/tenant-acme
+curl -H "Authorization: Bearer $ACME_KEY" http://localhost:8000/quota/tenant-acme
 # {"tenant_id":"tenant-acme","used_tokens":0,"limit":100000,"remaining":100000,...}
 ```
 
@@ -97,7 +97,7 @@ Make a chat completion request (proxied to OpenAI):
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "X-Tenant-ID: tenant-acme" \
+  -H "Authorization: Bearer $ACME_KEY" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [{"role": "user", "content": "What is Redis?"}]
@@ -110,7 +110,7 @@ Send the same (semantically equivalent) question again:
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "X-Tenant-ID: tenant-acme" \
+  -H "Authorization: Bearer $ACME_KEY" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [{"role": "user", "content": "Can you explain what Redis is?"}]
@@ -121,7 +121,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 Check updated quota:
 
 ```bash
-curl http://localhost:8000/quota/tenant-acme
+curl -H "Authorization: Bearer $ACME_KEY" http://localhost:8000/quota/tenant-acme
 # used_tokens now reflects the first request only (cache hit skipped billing)
 ```
 
@@ -132,6 +132,32 @@ make down
 ```
 
 ---
+
+## Authentication
+
+Every request to `/v1/chat/completions` and `/quota/{tenant_id}` needs `Authorization: Bearer <api_key>`. The tenant is derived from the key, never from the request.
+
+Configure keys with `GATEWAY_API_KEYS`, a comma-separated list of `<api_key>:<tenant_id>` pairs:
+
+```bash
+GATEWAY_API_KEYS="key-acme:tenant-acme,key-globex:tenant-globex"
+```
+
+- The value is validated once at startup. The gateway aborts with an error if it is missing, empty, malformed or repeats an API key, so a broken configuration never serves `/health`.
+- An API key cannot contain a colon (the first colon separates key from tenant) and each key may appear only once.
+- If the configuration becomes invalid at runtime, requests fail closed with `503`.
+
+### Legacy tenant header (temporary)
+
+`GATEWAY_LEGACY_TENANT_HEADER=1` (off by default, exact value `1` only) lets a request with no Bearer token authenticate through `X-Tenant-ID` when that tenant exists in `GATEWAY_API_KEYS`. Each use logs a `legacy_tenant_header_accepted` warning naming the tenant. While this flag is active, any client can impersonate any tenant. It exists only to migrate clients and must be removed soon.
+
+### Upgrading the semantic cache
+
+The cache is now scoped per tenant through a `tenant_id` column. Rows written before the upgrade have an empty `tenant_id`, never match any tenant, and are dead data. After deploying, delete them; the cache starts cold:
+
+```sql
+DELETE FROM semantic_cache WHERE tenant_id = '';
+```
 
 ## Commands
 
