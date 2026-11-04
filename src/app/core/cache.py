@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS semantic_cache (
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE semantic_cache ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS semantic_cache_tenant_idx ON semantic_cache (tenant_id);
+
 CREATE INDEX IF NOT EXISTS semantic_cache_embedding_idx
     ON semantic_cache
     USING ivfflat (embedding vector_cosine_ops)
@@ -65,19 +69,20 @@ class SemanticCache:
     async def _embed(self, text: str) -> list[float]:
         return await asyncio.to_thread(_embed_sync, text)
 
-    async def get(self, prompt: str) -> str | None:
+    async def get(self, prompt: str, tenant_id: str) -> str | None:
         embedding = await self._embed(prompt)
         vector_literal = "[" + ",".join(str(v) for v in embedding) + "]"
 
         query = """
             SELECT response
             FROM semantic_cache
-            WHERE 1 - (embedding <=> $1::vector) >= $2
+            WHERE tenant_id = $3
+              AND 1 - (embedding <=> $1::vector) >= $2
             ORDER BY embedding <=> $1::vector
             LIMIT 1
         """
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(query, vector_literal, self._threshold)
+            row = await conn.fetchrow(query, vector_literal, self._threshold, tenant_id)
 
         if row:
             logger.info("cache_hit", threshold=self._threshold)
@@ -86,16 +91,16 @@ class SemanticCache:
         logger.info("cache_miss")
         return None
 
-    async def set(self, prompt: str, response: str) -> None:
+    async def set(self, prompt: str, response: str, tenant_id: str) -> None:
         embedding = await self._embed(prompt)
         vector_literal = "[" + ",".join(str(v) for v in embedding) + "]"
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
         insert_sql = """
-            INSERT INTO semantic_cache (prompt_hash, embedding, response)
-            VALUES ($1, $2::vector, $3)
+            INSERT INTO semantic_cache (prompt_hash, embedding, response, tenant_id)
+            VALUES ($1, $2::vector, $3, $4)
         """
         async with self._pool.acquire() as conn:
-            await conn.execute(insert_sql, prompt_hash, vector_literal, response)
+            await conn.execute(insert_sql, prompt_hash, vector_literal, response, tenant_id)
 
         logger.info("cache_stored", prompt_hash=prompt_hash)

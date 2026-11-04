@@ -81,14 +81,14 @@ Client
 git clone https://github.com/jotive/llm-quota-gateway
 cd llm-quota-gateway
 make setup        # copies .env.example → .env
-# Edit .env → set OPENAI_API_KEY
+# Edit .env → set OPENAI_API_KEY and export GATEWAY_API_KEYS="<api_key>:<tenant_id>,..."
 make up           # starts app + PostgreSQL + Redis
 ```
 
 Check quota status for a tenant:
 
 ```bash
-curl http://localhost:8000/quota/tenant-acme
+curl -H "Authorization: Bearer $ACME_KEY" http://localhost:8000/quota/tenant-acme
 # {"tenant_id":"tenant-acme","used_tokens":0,"limit":100000,"remaining":100000,...}
 ```
 
@@ -97,7 +97,7 @@ Make a chat completion request (proxied to OpenAI):
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "X-Tenant-ID: tenant-acme" \
+  -H "Authorization: Bearer $ACME_KEY" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [{"role": "user", "content": "What is Redis?"}]
@@ -110,7 +110,7 @@ Send the same (semantically equivalent) question again:
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "X-Tenant-ID: tenant-acme" \
+  -H "Authorization: Bearer $ACME_KEY" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [{"role": "user", "content": "Can you explain what Redis is?"}]
@@ -121,7 +121,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 Check updated quota:
 
 ```bash
-curl http://localhost:8000/quota/tenant-acme
+curl -H "Authorization: Bearer $ACME_KEY" http://localhost:8000/quota/tenant-acme
 # used_tokens now reflects the first request only (cache hit skipped billing)
 ```
 
