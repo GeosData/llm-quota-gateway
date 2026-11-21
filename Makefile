@@ -21,3 +21,13 @@ shell:
 
 ps:
 	docker compose ps
+
+SERVICE := llm-quota-gateway
+REGION := us-east1
+PROJECT := geosdata
+
+.PHONY: deploy
+
+deploy:
+	gcloud run services describe $(SERVICE) --region $(REGION) --project $(PROJECT) --format='value(metadata.name)'
+	gcloud run deploy $(SERVICE) --source . --region $(REGION) --project $(PROJECT) --max-instances 1 --memory 512Mi --cpu 1 --quiet
